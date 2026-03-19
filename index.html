@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="本地离线病人问诊记录登记统计工具，支持新增、编辑、删除、筛选、统计、导入导出。">
+    <title>病人问诊记录登记统计</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-shell">
+        <header class="hero panel">
+            <div class="hero__copy">
+                <p class="eyebrow">LOCAL CLINIC REGISTER</p>
+                <h1>病人问诊记录登记统计</h1>
+                <p class="hero__text">适用于本地电脑直接登记、检索与汇总问诊记录。数据仅保存在当前浏览器的 localStorage 中，无需后端。</p>
+                <div class="hero__meta">
+                    <span class="hero-chip">静态页面</span>
+                    <span class="hero-chip">离线可用</span>
+                    <span class="hero-chip">本地持久化</span>
+                </div>
+            </div>
+            <div class="hero__actions">
+                <button id="newRecordButton" class="button button--primary" type="button">新增问诊记录</button>
+                <label class="button button--soft file-button" for="importFile">导入 JSON</label>
+                <input id="importFile" type="file" accept=".json,application/json" hidden>
+                <button id="seedDemoButton" class="button button--soft" type="button">填充 100 条假数据</button>
+                <div class="action-row">
+                    <button id="exportJsonButton" class="button button--ghost" type="button">导出 JSON</button>
+                    <button id="exportCsvButton" class="button button--ghost" type="button">导出 CSV</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-layout">
+            <section class="panel">
+                <div class="section-head">
+                    <div>
+                        <p class="section-title">基础统计面板</p>
+                        <p class="section-subtitle">展示总记录、今日问诊、需复诊和收费汇总。</p>
+                    </div>
+                </div>
+                <div id="statsGrid" class="stats-grid"></div>
+            </section>
+
+            <section class="panel">
+                <div class="section-head">
+                    <div>
+                        <p class="section-title">快速筛选</p>
+                        <p class="section-subtitle">支持关键字、就诊日期、科室和状态组合筛选。</p>
+                    </div>
+                </div>
+                <div class="toolbar-grid">
+                    <label class="field">
+                        <span>关键字搜索</span>
+                        <input id="searchInput" type="search" placeholder="搜索姓名、电话、编号、科室、医生、主诉、诊断，支持多个关键词">
+                    </label>
+                    <label class="field">
+                        <span>开始日期</span>
+                        <input id="startDateInput" type="date">
+                    </label>
+                    <label class="field">
+                        <span>结束日期</span>
+                        <input id="endDateInput" type="date">
+                    </label>
+                    <label class="field">
+                        <span>科室筛选</span>
+                        <select id="departmentFilter">
+                            <option value="">全部科室</option>
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span>状态筛选</span>
+                        <select id="statusFilter">
+                            <option value="">全部状态</option>
+                        </select>
+                    </label>
+                    <div class="toolbar-actions">
+                        <button id="resetFiltersButton" class="button button--soft" type="button">清空筛选</button>
+                    </div>
+                </div>
+                <div class="search-insight">
+                    <div>
+                        <p class="search-insight__title">搜索导航</p>
+                        <p id="searchSummaryText" class="search-insight__text">支持多个关键词组合搜索，例如：张三 内科 李医生 或 DEMO-001。</p>
+                    </div>
+                    <div id="searchTermList" class="search-term-list"></div>
+                    <div id="searchResultChips" class="search-result-chips"></div>
+                </div>
+            </section>
+
+            <section class="content-grid">
+                <section class="panel panel--form">
+                    <div class="section-head section-head--split">
+                        <div>
+                            <p class="section-title" id="formTitle">新增问诊记录</p>
+                            <p class="section-subtitle" id="formHint">填写信息后即可保存到本地浏览器。</p>
+                        </div>
+                        <button id="cancelEditButton" class="button button--ghost hidden" type="button">取消编辑</button>
+                    </div>
+
+                    <form id="recordForm" class="record-form">
+                        <div class="form-grid">
+                            <label class="field">
+                                <span>姓名</span>
+                                <input name="name" type="text" maxlength="30" placeholder="例如：张三" required>
+                            </label>
+
+                            <label class="field">
+                                <span>性别</span>
+                                <select name="gender">
+                                    <option value="">未填写</option>
+                                    <option value="女">女</option>
+                                    <option value="男">男</option>
+                                    <option value="其他">其他</option>
+                                </select>
+                            </label>
+
+                            <label class="field">
+                                <span>年龄</span>
+                                <input name="age" type="number" min="0" max="120" placeholder="岁">
+                            </label>
+
+                            <label class="field">
+                                <span>电话</span>
+                                <input name="phone" type="tel" maxlength="20" placeholder="联系电话">
+                            </label>
+
+                            <label class="field">
+                                <span>就诊日期</span>
+                                <input name="visitDate" type="date" required>
+                            </label>
+
+                            <label class="field">
+                                <span>科室</span>
+                                <input name="department" type="text" list="departmentSuggestions" maxlength="30" placeholder="例如：内科" required>
+                            </label>
+
+                            <label class="field">
+                                <span>医生</span>
+                                <input name="doctor" type="text" maxlength="30" placeholder="接诊医生" required>
+                            </label>
+
+                            <label class="field">
+                                <span>收费金额</span>
+                                <input name="fee" type="number" min="0" step="0.01" placeholder="0.00" required>
+                            </label>
+
+                            <label class="field field--span-2">
+                                <span>状态</span>
+                                <input name="status" type="text" list="statusSuggestions" maxlength="20" placeholder="例如：已完成" required>
+                            </label>
+
+                            <label class="field field--span-2">
+                                <span>主诉 / 症状</span>
+                                <textarea name="symptoms" rows="3" maxlength="300" placeholder="记录主要症状、主诉和问诊重点" required></textarea>
+                            </label>
+
+                            <label class="field field--span-2">
+                                <span>初步诊断</span>
+                                <textarea name="diagnosis" rows="3" maxlength="300" placeholder="输入初步诊断结论" required></textarea>
+                            </label>
+
+                            <label class="field field--span-2">
+                                <span>备注</span>
+                                <textarea name="notes" rows="3" maxlength="300" placeholder="补充说明、用药建议、回访要点等"></textarea>
+                            </label>
+
+                            <label class="checkbox-field field--span-2">
+                                <input name="followUp" type="checkbox">
+                                <span>标记为需复诊 / 回访</span>
+                            </label>
+                        </div>
+
+                        <div class="form-actions">
+                            <button id="submitButton" class="button button--primary" type="submit">保存记录</button>
+                            <button id="resetFormButton" class="button button--soft" type="reset">重置表单</button>
+                        </div>
+                    </form>
+
+                    <datalist id="departmentSuggestions">
+                        <option value="内科"></option>
+                        <option value="外科"></option>
+                        <option value="儿科"></option>
+                        <option value="口腔科"></option>
+                        <option value="皮肤科"></option>
+                        <option value="中医科"></option>
+                    </datalist>
+
+                    <datalist id="statusSuggestions">
+                        <option value="已完成"></option>
+                        <option value="待复查"></option>
+                        <option value="随访中"></option>
+                        <option value="已归档"></option>
+                    </datalist>
+                </section>
+
+                <section class="panel panel--visual">
+                    <div class="section-head">
+                        <div>
+                            <p class="section-title">近 7 天问诊趋势</p>
+                            <p class="section-subtitle">按当前筛选结果统计每日问诊记录数。</p>
+                        </div>
+                    </div>
+                    <div id="trendChart" class="trend-chart" aria-label="近7天问诊趋势图"></div>
+                    <div id="trendSummary" class="trend-summary"></div>
+                </section>
+            </section>
+
+            <section class="panel panel--analytics">
+                <div class="section-head">
+                    <div>
+                        <p class="section-title">分类统计</p>
+                        <p class="section-subtitle">基于当前筛选结果实时汇总科室、医生和状态分布。</p>
+                    </div>
+                </div>
+                <div class="breakdown-grid">
+                    <article class="breakdown-card">
+                        <p class="breakdown-card__title">科室分布</p>
+                        <div id="departmentBreakdown" class="ranking-list"></div>
+                    </article>
+                    <article class="breakdown-card">
+                        <p class="breakdown-card__title">医生工作量</p>
+                        <div id="doctorBreakdown" class="ranking-list"></div>
+                    </article>
+                    <article class="breakdown-card">
+                        <p class="breakdown-card__title">状态分布</p>
+                        <div id="statusBreakdown" class="ranking-list"></div>
+                    </article>
+                </div>
+            </section>
+
+            <section class="panel panel--records">
+                <div class="section-head section-head--split">
+                    <div>
+                        <p class="section-title">问诊记录列表</p>
+                        <p class="section-subtitle" id="listSummary">共 0 条记录，默认按就诊日期倒序显示。</p>
+                    </div>
+                </div>
+                <div id="recordList" class="record-list"></div>
+            </section>
+        </main>
+    </div>
+
+    <div id="toast" class="toast" aria-live="polite"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+{
+  "name": "doctor-local-register",
+  "private": true,
+  "version": "1.0.0",
+  "main": "main.js",
+  "author": "wzx011011",
+  "description": "本地病人问诊记录登记统计页面",
+  "scripts": {
+    "test": "node --test tests/app.smoke.test.mjs",
+    "ci:local": "node scripts/ci-local.mjs",
+    "desktop:start": "electron .",
+    "desktop:pack": "electron-builder --win portable",
+    "desktop:dir": "electron-builder --dir",
+    "desktop:pack:cn": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$env:npm_config_registry='https://registry.npmmirror.com'; $env:ELECTRON_MIRROR='https://npmmirror.com/mirrors/electron/'; $env:npm_config_electron_mirror='https://npmmirror.com/mirrors/electron/'; $env:ELECTRON_BUILDER_BINARIES_MIRROR='https://npmmirror.com/mirrors/electron-builder-binaries/'; npm run desktop:pack\""
+  },
+  "devDependencies": {
+    "electron": "^35.0.2",
+    "electron-builder": "^25.1.8",
+    "jsdom": "^26.1.0"
+  },
+  "build": {
+    "appId": "local.doctor.register",
+    "productName": "DoctorRegister",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "index.html",
+      "app.js",
+      "styles.css",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "DoctorRegister-${version}-portable.${ext}"
+    }
+  }
+}

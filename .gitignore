@@ -1,0 +1,8 @@
+node_modules/
+release/
+*.log
+npm-debug.log*
+.DS_Store
+.claude/
+install-openclaw.ps1
+install-openclaw-simple.ps1
