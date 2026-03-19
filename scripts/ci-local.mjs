@@ -9,6 +9,8 @@ const isWindows = process.platform === "win32";
 const npmCommand = isWindows ? "npm.cmd" : "npm";
 const releaseDir = path.join(rootDir, "release");
 const winUnpackedDir = path.join(releaseDir, "win-unpacked");
+const CLEAN_RETRY_DELAY_MS = 600;
+const CLEAN_RETRY_COUNT = 5;
 
 async function main() {
     const releaseMetadata = await loadReleaseMetadata(rootDir);
@@ -21,8 +23,56 @@ async function main() {
 }
 
 async function cleanArtifacts(portablePath) {
-    await rm(portablePath, { force: true });
-    await rm(winUnpackedDir, { recursive: true, force: true });
+    await stopRunningDoctorProcesses();
+    await removeWithRetry(portablePath, { force: true });
+    await removeWithRetry(winUnpackedDir, { recursive: true, force: true });
+}
+
+async function stopRunningDoctorProcesses() {
+    if (!isWindows) {
+        return;
+    }
+
+    await new Promise((resolve, reject) => {
+        const child = spawn("powershell.exe", [
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "Get-Process | Where-Object { $_.ProcessName -like 'DoctorRegister*' } | Stop-Process -Force -ErrorAction SilentlyContinue"
+        ], {
+            cwd: rootDir,
+            stdio: "ignore"
+        });
+
+        child.on("exit", () => resolve());
+        child.on("error", reject);
+    });
+
+    await wait(800);
+}
+
+async function removeWithRetry(targetPath, options) {
+    for (let attempt = 0; attempt <= CLEAN_RETRY_COUNT; attempt += 1) {
+        try {
+            await rm(targetPath, options);
+            return;
+        } catch (error) {
+            const errorCode = error && typeof error === "object" ? error.code : "";
+            const shouldRetry = isWindows && ["EBUSY", "EPERM"].includes(String(errorCode));
+
+            if (!shouldRetry || attempt === CLEAN_RETRY_COUNT) {
+                throw error;
+            }
+
+            await wait(CLEAN_RETRY_DELAY_MS * (attempt + 1));
+        }
+    }
+}
+
+function wait(durationMs) {
+    return new Promise((resolve) => {
+        setTimeout(resolve, durationMs);
+    });
 }
 
 function runStep(label, args) {

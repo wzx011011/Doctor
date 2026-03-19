@@ -15,7 +15,7 @@ function formatLocalDate(date) {
     return `${year}-${month}-${day}`;
 }
 
-async function createAppDom(url = "http://localhost/?demo=off") {
+async function createAppDom(url = "http://localhost/?demo=off", options = {}) {
     const htmlPath = path.join(workspaceDir, "index.html");
     const scriptPath = path.join(workspaceDir, "app.js");
     const [html, appJs] = await Promise.all([
@@ -42,9 +42,14 @@ async function createAppDom(url = "http://localhost/?demo=off") {
                 return this.checkValidity();
             };
             window.confirm = () => (confirmQueue.length ? confirmQueue.shift() : true);
+
+            if (typeof options.beforeParse === "function") {
+                options.beforeParse(window);
+            }
         }
     });
 
+    await flush(dom.window);
     await flush(dom.window);
 
     return { dom, window: dom.window, document: dom.window.document, downloads, confirmQueue };
@@ -285,6 +290,123 @@ test("首次打开会填充100条假数据并支持搜索定位", async () => {
     jumpButton.click();
     await flush(window);
     assert.equal(document.querySelectorAll(".record-card--focus").length, 1);
+
+    dom.window.close();
+});
+
+test("桌面模式使用 JSON 文件存储", async () => {
+    const today = formatLocalDate(new Date());
+    let savedRecords = null;
+
+    const { dom, window, document } = await createAppDom("http://localhost/?demo=off&desktop=1", {
+        beforeParse(jsdomWindow) {
+            jsdomWindow.doctorDesktopStorage = {
+                loadRecords: async () => ({
+                    exists: true,
+                    filePath: "C:/Users/Test/Documents/DoctorRegister/doctor-records.json",
+                    records: [
+                        {
+                            id: "desktop-record-001",
+                            name: "桌面患者",
+                            gender: "女",
+                            age: 38,
+                            phone: "13800000011",
+                            visitDate: today,
+                            department: "内科",
+                            doctor: "文件医生",
+                            symptoms: "胸闷复查",
+                            diagnosis: "恢复观察",
+                            fee: 18,
+                            status: "已完成",
+                            followUp: false,
+                            notes: "来自桌面 JSON"
+                        }
+                    ]
+                }),
+                saveRecords: async (records) => {
+                    savedRecords = JSON.parse(JSON.stringify(records));
+                    return {
+                        filePath: "C:/Users/Test/Documents/DoctorRegister/doctor-records.json"
+                    };
+                }
+            };
+        }
+    });
+
+    await waitFor(window, () => document.querySelectorAll(".record-card").length === 1);
+    assert.match(document.getElementById("recordList").textContent, /桌面患者/);
+    assert.equal(getStoredRecords(window).length, 0);
+
+    await submitRecord(window, {
+        name: "文件新增患者",
+        gender: "男",
+        age: "52",
+        phone: "13800000012",
+        visitDate: today,
+        department: "外科",
+        doctor: "文件医生",
+        fee: "56",
+        status: "随访中",
+        symptoms: "术后拆线",
+        diagnosis: "术后恢复良好",
+        notes: "桌面模式写入文件",
+        followUp: true
+    });
+
+    await waitFor(window, () => Array.isArray(savedRecords) && savedRecords.length === 2);
+    assert.ok(savedRecords.some((record) => record.name === "文件新增患者"));
+    assert.equal(getStoredRecords(window).length, 0);
+
+    dom.window.close();
+});
+
+test("桌面模式会迁移老版本 localStorage 数据到 JSON 文件", async () => {
+    const today = formatLocalDate(new Date());
+    let savedRecords = null;
+
+    const { dom, window, document } = await createAppDom("http://localhost/?demo=off&desktop=1", {
+        beforeParse(jsdomWindow) {
+            jsdomWindow.localStorage.setItem("doctor.consultation.records.v1", JSON.stringify([
+                {
+                    id: "legacy-record-001",
+                    name: "旧版患者",
+                    gender: "男",
+                    age: 46,
+                    phone: "13800000021",
+                    visitDate: today,
+                    department: "中医科",
+                    doctor: "迁移医生",
+                    symptoms: "睡眠差",
+                    diagnosis: "失眠",
+                    fee: 36,
+                    status: "待复查",
+                    followUp: true,
+                    notes: "来自旧版 localStorage"
+                }
+            ]));
+
+            jsdomWindow.doctorDesktopStorage = {
+                loadRecords: async () => ({
+                    exists: false,
+                    filePath: "C:/Users/Test/Documents/DoctorRegister/doctor-records.json",
+                    records: []
+                }),
+                saveRecords: async (records) => {
+                    savedRecords = JSON.parse(JSON.stringify(records));
+                    return {
+                        filePath: "C:/Users/Test/Documents/DoctorRegister/doctor-records.json"
+                    };
+                }
+            };
+        }
+    });
+
+    await waitFor(window, () => document.querySelectorAll(".record-card").length === 1);
+    assert.match(document.getElementById("recordList").textContent, /旧版患者/);
+    assert.ok(Array.isArray(savedRecords));
+    assert.equal(savedRecords.length, 1);
+    assert.equal(savedRecords[0].name, "旧版患者");
+    assert.match(document.getElementById("toast").textContent, /桌面版数据已迁移到/);
 
     dom.window.close();
 });

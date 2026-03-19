@@ -64,7 +64,12 @@ const state = {
     },
     editingId: null,
     pendingImages: [],
-    isProcessingImages: false
+    isProcessingImages: false,
+    storageInfo: {
+        mode: "browser-localStorage",
+        filePath: ""
+    },
+    pendingToast: null
 };
 
 const dom = {
@@ -125,18 +130,43 @@ const fieldAliases = {
 let toastTimer = null;
 
 document.addEventListener("DOMContentLoaded", () => {
-    initializeState();
     bindEvents();
-    render();
+    void initializeApplication();
 });
 
-function initializeState() {
-    const hasStoredRecords = Boolean(localStorage.getItem(STORAGE_KEY));
-    state.records = sortRecords(loadRecords());
+async function initializeApplication() {
+    await initializeState();
+    render();
+
+    if (state.pendingToast) {
+        showToast(state.pendingToast, false);
+        state.pendingToast = null;
+    }
+}
+
+async function initializeState() {
+    const { records, hasStoredRecords, storageInfo } = await loadStoredRecords();
+
+    state.records = sortRecords(records);
+    state.storageInfo = storageInfo;
+
+    if (!state.records.length && hasDesktopStorageBridge() && !hasStoredRecords) {
+        const legacyRecords = sortRecords(loadRecords());
+
+        if (legacyRecords.length) {
+            state.records = legacyRecords;
+
+            if (await persistRecords(state.records)) {
+                state.pendingToast = state.storageInfo.filePath
+                    ? `桌面版数据已迁移到 ${state.storageInfo.filePath}`
+                    : "桌面版数据已迁移到本地 JSON 文件。";
+            }
+        }
+    }
 
     if (!state.records.length && !hasStoredRecords && shouldAutoSeedDemoRecords()) {
         state.records = createDemoRecords(DEMO_RECORD_COUNT);
-        saveRecords(state.records);
+        await persistRecords(state.records);
     }
 
     setFormDefaults();
@@ -188,7 +218,7 @@ function bindEvents() {
     dom.caseImagesPreview.addEventListener("click", handleCaseImagePreviewAction);
 }
 
-function handleSeedDemoButton() {
+async function handleSeedDemoButton() {
     if (state.records.length > 0) {
         const confirmed = window.confirm(`将用 ${DEMO_RECORD_COUNT} 条假数据替换当前 ${state.records.length} 条记录，是否继续？`);
 
@@ -200,7 +230,7 @@ function handleSeedDemoButton() {
     resetEditing();
     resetFilters(false);
 
-    if (setRecords(createDemoRecords(DEMO_RECORD_COUNT))) {
+    if (await setRecords(createDemoRecords(DEMO_RECORD_COUNT))) {
         showToast(`已填充 ${DEMO_RECORD_COUNT} 条假数据，可直接搜索演示。`, false);
     }
 }
@@ -261,13 +291,13 @@ async function handleFormSubmit(event) {
             updatedAt: new Date().toISOString()
         };
 
-        if (!setRecords(state.records.map((item) => (item.id === state.editingId ? updatedRecord : item)))) {
+        if (!await setRecords(state.records.map((item) => (item.id === state.editingId ? updatedRecord : item)))) {
             return;
         }
 
         showToast("问诊记录已更新。", false);
     } else {
-        if (!setRecords([nextRecord, ...state.records])) {
+        if (!await setRecords([nextRecord, ...state.records])) {
             return;
         }
 
@@ -284,7 +314,7 @@ function handleFormReset() {
     });
 }
 
-function handleRecordAction(event) {
+async function handleRecordAction(event) {
     const button = event.target.closest("[data-action]");
 
     if (!button) {
@@ -312,7 +342,7 @@ function handleRecordAction(event) {
             return;
         }
 
-        if (!setRecords(state.records.filter((item) => item.id !== recordId))) {
+        if (!await setRecords(state.records.filter((item) => item.id !== recordId))) {
             return;
         }
 
@@ -397,13 +427,13 @@ function resetFilters(shouldRender = true) {
     }
 }
 
-function setRecords(records) {
+async function setRecords(records) {
     const previousRecords = state.records;
     const normalizedRecords = sortRecords(records.map((item) => normalizeRecord(item, { fallbackId: item.id || createRecordId() })));
 
     state.records = normalizedRecords;
 
-    if (!saveRecords(state.records)) {
+    if (!await persistRecords(state.records)) {
         state.records = previousRecords;
         render();
         return false;
@@ -411,6 +441,65 @@ function setRecords(records) {
 
     render();
     return true;
+}
+
+async function loadStoredRecords() {
+    if (hasDesktopStorageBridge()) {
+        try {
+            const payload = await window.doctorDesktopStorage.loadRecords();
+            const records = Array.isArray(payload && payload.records) ? payload.records : [];
+
+            return {
+                records: records.map((item) => normalizeRecord(item, { fallbackId: createRecordId() })),
+                hasStoredRecords: Boolean(payload && payload.exists),
+                storageInfo: {
+                    mode: "desktop-json-file",
+                    filePath: normalizeText(payload && payload.filePath)
+                }
+            };
+        } catch (error) {
+            console.error("Failed to load desktop records", error);
+            showToast("读取桌面数据文件失败，已回退到浏览器本地存储。", true);
+        }
+    }
+
+    const hasStoredRecords = Boolean(localStorage.getItem(STORAGE_KEY));
+
+    return {
+        records: sortRecords(loadRecords()),
+        hasStoredRecords,
+        storageInfo: {
+            mode: "browser-localStorage",
+            filePath: ""
+        }
+    };
+}
+
+async function persistRecords(records) {
+    if (hasDesktopStorageBridge()) {
+        try {
+            const result = await window.doctorDesktopStorage.saveRecords(records);
+            state.storageInfo = {
+                mode: "desktop-json-file",
+                filePath: normalizeText(result && result.filePath)
+            };
+            return true;
+        } catch (error) {
+            console.error("Failed to save desktop records", error);
+            showToast("保存到桌面数据文件失败，请检查文档目录权限。", true);
+            return false;
+        }
+    }
+
+    return saveRecords(records);
+}
+
+function hasDesktopStorageBridge() {
+    return Boolean(
+        window.doctorDesktopStorage
+        && typeof window.doctorDesktopStorage.loadRecords === "function"
+        && typeof window.doctorDesktopStorage.saveRecords === "function"
+    );
 }
 
 function render() {
@@ -1137,7 +1226,7 @@ async function handleImportFile(event) {
         const shouldReplace = state.records.length > 0 && window.confirm("点击“确定”覆盖现有数据，点击“取消”则追加导入。");
         const nextRecords = shouldReplace ? normalizedRecords : mergeImportedRecords(state.records, normalizedRecords);
 
-        if (setRecords(nextRecords)) {
+        if (await setRecords(nextRecords)) {
             showToast(`成功导入 ${normalizedRecords.length} 条记录。`, false);
         }
     } catch (error) {
