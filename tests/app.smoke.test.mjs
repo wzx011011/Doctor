@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 
-const workspaceDir = path.resolve("D:/AI/doctor");
+const currentFilePath = fileURLToPath(import.meta.url);
+const workspaceDir = path.resolve(path.dirname(currentFilePath), "..");
 
 function formatLocalDate(date) {
     const year = date.getFullYear();
