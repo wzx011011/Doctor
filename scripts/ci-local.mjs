@@ -2,24 +2,26 @@ import { spawn } from "node:child_process";
 import { rm, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { loadReleaseMetadata } from "./release-meta.mjs";
 
 const rootDir = process.cwd();
 const isWindows = process.platform === "win32";
 const npmCommand = isWindows ? "npm.cmd" : "npm";
 const releaseDir = path.join(rootDir, "release");
-const portableExe = path.join(releaseDir, "DoctorRegister-1.0.0-portable.exe");
 const winUnpackedDir = path.join(releaseDir, "win-unpacked");
 
 async function main() {
-    await cleanArtifacts();
+    const releaseMetadata = await loadReleaseMetadata(rootDir);
+
+    await cleanArtifacts(releaseMetadata.portablePath);
     await runStep("运行网页测试", ["test"]);
     await runStep("打包 Windows 便携版", ["run", "desktop:pack"]);
-    await validateArtifact();
-    console.log(`CI_LOCAL_OK ${portableExe}`);
+    await validateArtifact(releaseMetadata.portablePath);
+    console.log(`CI_LOCAL_OK ${releaseMetadata.portablePath}`);
 }
 
-async function cleanArtifacts() {
-    await rm(portableExe, { force: true });
+async function cleanArtifacts(portablePath) {
+    await rm(portablePath, { force: true });
     await rm(winUnpackedDir, { recursive: true, force: true });
 }
 
@@ -49,8 +51,8 @@ function runStep(label, args) {
     });
 }
 
-async function validateArtifact() {
-    const file = await stat(portableExe);
+async function validateArtifact(portablePath) {
+    const file = await stat(portablePath);
 
     if (!file.isFile() || file.size <= 0) {
         throw new Error("未生成有效的 portable exe 文件");

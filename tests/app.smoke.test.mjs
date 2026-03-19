@@ -54,6 +54,18 @@ async function flush(window) {
     await new Promise((resolve) => window.setTimeout(resolve, 0));
 }
 
+async function waitFor(window, predicate, attempts = 20) {
+    for (let index = 0; index < attempts; index += 1) {
+        if (predicate()) {
+            return;
+        }
+
+        await flush(window);
+    }
+
+    throw new Error("等待页面状态更新超时");
+}
+
 async function submitRecord(window, values) {
     const form = window.document.getElementById("recordForm");
     form.elements.name.value = values.name;
@@ -72,6 +84,22 @@ async function submitRecord(window, values) {
 
     form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
     await flush(window);
+}
+
+async function uploadCaseImages(window, files) {
+    const imageInput = window.document.getElementById("caseImagesInput");
+
+    Object.defineProperty(imageInput, "files", {
+        configurable: true,
+        value: files
+    });
+
+    imageInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await waitFor(window, () => !window.document.getElementById("caseImagesSummary").textContent.includes("正在处理"));
+}
+
+function createFakeImageFile(window, name) {
+    return new window.File([`fake-image-${name}`], name, { type: "image/png" });
 }
 
 function getStoredRecords(window) {
@@ -94,6 +122,14 @@ test("页面主流程功能可用", async () => {
     assert.equal(form.elements.visitDate.value, today);
     assert.equal(form.elements.status.value, "已完成");
     assert.equal(document.querySelectorAll(".record-card").length, 0);
+
+    await uploadCaseImages(window, [
+        createFakeImageFile(window, "case-1.png"),
+        createFakeImageFile(window, "case-2.png")
+    ]);
+
+    assert.match(document.getElementById("caseImagesSummary").textContent, /已选择 2 \/ 6 张病例图片/);
+    assert.equal(document.querySelectorAll(".case-image-card--editor").length, 2);
 
     await submitRecord(window, {
         name: "张三",
@@ -129,6 +165,7 @@ test("页面主流程功能可用", async () => {
 
     let records = getStoredRecords(window);
     assert.equal(records.length, 2);
+    assert.equal(records.find((record) => record.name === "张三").images.length, 2);
     assert.equal(document.querySelectorAll(".record-card").length, 2);
     assert.match(document.getElementById("statsGrid").textContent, /总记录数/);
     assert.match(document.getElementById("departmentBreakdown").textContent, /内科/);
@@ -153,9 +190,14 @@ test("页面主流程功能可用", async () => {
 
     const zhangSanCard = getRecordCardByName(document, "张三");
     assert.ok(zhangSanCard);
+    assert.match(zhangSanCard.textContent, /病例图片/);
     zhangSanCard.querySelector('[data-action="edit"]').click();
     await flush(window);
     assert.equal(form.elements.name.value, "张三");
+    assert.equal(document.querySelectorAll(".case-image-card--editor").length, 2);
+    document.querySelector("[data-case-image-remove]").click();
+    await flush(window);
+    assert.equal(document.querySelectorAll(".case-image-card--editor").length, 1);
     form.elements.fee.value = "30";
     form.elements.notes.value = "已调整处方";
     form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
@@ -165,6 +207,7 @@ test("页面主流程功能可用", async () => {
     const editedRecord = records.find((record) => record.name === "张三");
     assert.equal(editedRecord.fee, 30);
     assert.equal(editedRecord.notes, "已调整处方");
+    assert.equal(editedRecord.images.length, 1);
 
     confirmQueue.push(true);
     document.querySelector('[data-action="delete"][data-record-id="' + editedRecord.id + '"]').click();
@@ -195,7 +238,8 @@ test("页面主流程功能可用", async () => {
                 收费金额: 45,
                 状态: "已完成",
                 是否复诊: "是",
-                备注: "三天后复查"
+                备注: "三天后复查",
+                病例图片: ["data:image/png;base64,ZmFrZV9pbXBvcnRfaW1hZ2U="]
             }
         ]
     };
@@ -212,7 +256,9 @@ test("页面主流程功能可用", async () => {
     records = getStoredRecords(window);
     assert.equal(records.length, 2);
     assert.ok(records.some((record) => record.name === "赵六"));
+    assert.equal(records.find((record) => record.name === "赵六").images.length, 1);
     assert.match(document.getElementById("recordList").textContent, /赵六/);
+    assert.match(getRecordCardByName(document, "赵六").textContent, /病例图片/);
 
     dom.window.close();
 });

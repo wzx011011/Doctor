@@ -166,6 +166,13 @@
                                 <textarea name="notes" rows="3" maxlength="300" placeholder="补充说明、用药建议、回访要点等"></textarea>
                             </label>
 
+                            <div class="field field--span-2">
+                                <span>病例图片</span>
+                                <input id="caseImagesInput" name="caseImages" type="file" accept="image/*" multiple>
+                                <p id="caseImagesSummary" class="field-hint">支持一次上传多张病例图片，最多 6 张，保存时会自动压缩并随 JSON 一起导出。</p>
+                                <div id="caseImagesPreview" class="case-image-grid case-image-grid--editor"></div>
+                            </div>
+
                             <label class="checkbox-field field--span-2">
                                 <input name="followUp" type="checkbox">
                                 <span>标记为需复诊 / 回访</span>

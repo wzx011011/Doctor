@@ -1,7 +1,7 @@
 {
   "name": "doctor-local-register",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "main.js",
   "author": "wzx011011",
   "description": "本地病人问诊记录登记统计页面",

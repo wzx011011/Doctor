@@ -1,8 +1,5 @@
 name: CI
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 on:
   push:
     branches:
@@ -10,18 +7,21 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   web-tests:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install Dependencies
@@ -38,23 +38,29 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install Dependencies
         run: npm ci
+
+      - name: Read Build Metadata
+        id: meta
+        shell: pwsh
+        run: node scripts/release-meta.mjs --github-output
 
       - name: Run Windows CI Validation
         shell: pwsh
         run: npm run ci:local
 
       - name: Upload Portable Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: doctor-windows-portable
-          path: release/DoctorRegister-1.0.0-portable.exe
+          name: ${{ steps.meta.outputs.portable_artifact_name }}
+          path: ${{ steps.meta.outputs.portable_path }}
+          if-no-files-found: error

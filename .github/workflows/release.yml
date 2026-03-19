@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-windows-release:
+    runs-on: windows-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Read Release Metadata
+        id: meta
+        shell: pwsh
+        run: node scripts/release-meta.mjs --github-output
+
+      - name: Validate Tag Matches Package Version
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          $expectedTag = "${{ steps.meta.outputs.release_tag }}"
+          $actualTag = "${{ github.ref_name }}"
+
+          if ($actualTag -ne $expectedTag) {
+              throw "标签 $actualTag 与 package.json 版本不一致，期望 $expectedTag"
+          }
+
+      - name: Build Release Package
+        shell: pwsh
+        run: npm run ci:local
+
+      - name: Upload Workflow Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.meta.outputs.portable_artifact_name }}
+          path: ${{ steps.meta.outputs.portable_path }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.meta.outputs.release_tag }}"
+          $title = "${{ steps.meta.outputs.release_title }}"
+          $asset = "${{ steps.meta.outputs.portable_path }}"
+
+          gh release view $tag *> $null
+
+          if ($LASTEXITCODE -eq 0) {
+              gh release upload $tag $asset --clobber
+          }
+          else {
+              gh release create $tag $asset --title $title --generate-notes --latest --target "${{ github.sha }}"
+          }

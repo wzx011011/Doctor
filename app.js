@@ -3,6 +3,9 @@ const STATUS_FALLBACK = "已完成";
 const CHART_DAYS = 7;
 const DEMO_RECORD_COUNT = 100;
 const SEARCH_RESULT_LIMIT = 8;
+const CASE_IMAGE_LIMIT = 6;
+const CASE_IMAGE_MAX_EDGE = 1600;
+const CASE_IMAGE_JPEG_QUALITY = 0.82;
 const DEMO_SURNAMES = ["赵", "钱", "孙", "李", "周", "吴", "郑", "王", "冯", "陈", "褚", "卫", "蒋", "沈", "韩", "杨", "朱", "秦", "尤", "许", "何", "吕", "施", "张", "孔"];
 const DEMO_GIVEN_NAMES = ["伟", "敏", "静", "磊", "娜", "洋", "婷", "杰", "丽", "鹏", "艳", "超", "勇", "娟", "涛", "玲"];
 const DEMO_SCENARIOS = [
@@ -59,7 +62,9 @@ const state = {
         department: "",
         status: ""
     },
-    editingId: null
+    editingId: null,
+    pendingImages: [],
+    isProcessingImages: false
 };
 
 const dom = {
@@ -91,6 +96,9 @@ const dom = {
     importFile: document.getElementById("importFile"),
     exportJsonButton: document.getElementById("exportJsonButton"),
     exportCsvButton: document.getElementById("exportCsvButton"),
+    caseImagesInput: document.getElementById("caseImagesInput"),
+    caseImagesSummary: document.getElementById("caseImagesSummary"),
+    caseImagesPreview: document.getElementById("caseImagesPreview"),
     toast: document.getElementById("toast")
 };
 
@@ -109,6 +117,7 @@ const fieldAliases = {
     status: ["status", "recordStatus", "状态"],
     followUp: ["followUp", "needFollowUp", "isFollowUp", "是否复诊", "复诊"],
     notes: ["notes", "remark", "memo", "备注"],
+    images: ["images", "caseImages", "attachments", "病例图片", "图片", "附件"],
     createdAt: ["createdAt", "创建时间"],
     updatedAt: ["updatedAt", "更新时间"]
 };
@@ -175,6 +184,8 @@ function bindEvents() {
     dom.importFile.addEventListener("change", handleImportFile);
     dom.exportJsonButton.addEventListener("click", exportJson);
     dom.exportCsvButton.addEventListener("click", exportCsv);
+    dom.caseImagesInput.addEventListener("change", handleCaseImagesSelected);
+    dom.caseImagesPreview.addEventListener("click", handleCaseImagePreviewAction);
 }
 
 function handleSeedDemoButton() {
@@ -188,12 +199,19 @@ function handleSeedDemoButton() {
 
     resetEditing();
     resetFilters(false);
-    setRecords(createDemoRecords(DEMO_RECORD_COUNT));
-    showToast(`已填充 ${DEMO_RECORD_COUNT} 条假数据，可直接搜索演示。`, false);
+
+    if (setRecords(createDemoRecords(DEMO_RECORD_COUNT))) {
+        showToast(`已填充 ${DEMO_RECORD_COUNT} 条假数据，可直接搜索演示。`, false);
+    }
 }
 
-function handleFormSubmit(event) {
+async function handleFormSubmit(event) {
     event.preventDefault();
+
+    if (state.isProcessingImages) {
+        showToast("病例图片仍在处理中，请稍候再保存。", true);
+        return;
+    }
 
     if (!dom.form.reportValidity()) {
         return;
@@ -225,7 +243,8 @@ function handleFormSubmit(event) {
         fee: formData.get("fee"),
         status: formData.get("status"),
         followUp: formData.get("followUp") === "on",
-        notes: formData.get("notes")
+        notes: formData.get("notes"),
+        images: cloneCaseImages(state.pendingImages)
     }, { fallbackId: state.editingId || createRecordId() });
 
     if (!nextRecord.name || !nextRecord.visitDate || !nextRecord.department || !nextRecord.doctor || !nextRecord.symptoms || !nextRecord.diagnosis) {
@@ -242,10 +261,16 @@ function handleFormSubmit(event) {
             updatedAt: new Date().toISOString()
         };
 
-        setRecords(state.records.map((item) => (item.id === state.editingId ? updatedRecord : item)));
+        if (!setRecords(state.records.map((item) => (item.id === state.editingId ? updatedRecord : item)))) {
+            return;
+        }
+
         showToast("问诊记录已更新。", false);
     } else {
-        setRecords([nextRecord, ...state.records]);
+        if (!setRecords([nextRecord, ...state.records])) {
+            return;
+        }
+
         showToast("问诊记录已保存。", false);
     }
 
@@ -287,7 +312,9 @@ function handleRecordAction(event) {
             return;
         }
 
-        setRecords(state.records.filter((item) => item.id !== recordId));
+        if (!setRecords(state.records.filter((item) => item.id !== recordId))) {
+            return;
+        }
 
         if (state.editingId === recordId) {
             resetEditing();
@@ -322,6 +349,9 @@ function populateForm(record) {
     dom.form.elements.diagnosis.value = record.diagnosis;
     dom.form.elements.notes.value = record.notes;
     dom.form.elements.followUp.checked = Boolean(record.followUp);
+    state.pendingImages = cloneCaseImages(record.images);
+    dom.caseImagesInput.value = "";
+    renderCaseImageManager();
 
     dom.formTitle.textContent = "编辑问诊记录";
     dom.formHint.textContent = "修改后会直接覆盖当前记录。";
@@ -331,21 +361,27 @@ function populateForm(record) {
 
 function resetEditing(shouldResetForm = true) {
     state.editingId = null;
+    state.pendingImages = [];
+    state.isProcessingImages = false;
     dom.formTitle.textContent = "新增问诊记录";
     dom.formHint.textContent = "填写信息后即可保存到本地浏览器。";
     dom.submitButton.textContent = "保存记录";
     dom.cancelEditButton.classList.add("hidden");
+    dom.caseImagesInput.value = "";
 
     if (shouldResetForm) {
         dom.form.reset();
         setFormDefaults();
     }
+
+    renderCaseImageManager();
 }
 
 function setFormDefaults() {
     dom.form.elements.visitDate.value = getTodayDate();
     dom.form.elements.status.value = STATUS_FALLBACK;
     dom.form.elements.followUp.checked = false;
+    renderCaseImageManager();
 }
 
 function resetFilters(shouldRender = true) {
@@ -362,9 +398,19 @@ function resetFilters(shouldRender = true) {
 }
 
 function setRecords(records) {
-    state.records = sortRecords(records.map((item) => normalizeRecord(item, { fallbackId: item.id || createRecordId() })));
-    saveRecords(state.records);
+    const previousRecords = state.records;
+    const normalizedRecords = sortRecords(records.map((item) => normalizeRecord(item, { fallbackId: item.id || createRecordId() })));
+
+    state.records = normalizedRecords;
+
+    if (!saveRecords(state.records)) {
+        state.records = previousRecords;
+        render();
+        return false;
+    }
+
     render();
+    return true;
 }
 
 function render() {
@@ -539,6 +585,10 @@ function renderRecordList(filteredRecords, searchTerms) {
             record.doctor || "医生未填"
         ];
 
+        if (record.images.length) {
+            metaChips.push(`${record.images.length} 张病例图`);
+        }
+
         return `
             <article class="record-card" data-record-card-id="${escapeHtml(record.id)}">
                 <header class="record-card__header">
@@ -573,6 +623,8 @@ function renderRecordList(filteredRecords, searchTerms) {
                     </section>
                 ` : ""}
 
+                ${renderRecordImagesSection(record)}
+
                 <footer class="record-card__footer">
                     <span class="record-card__fee">收费 ￥${formatCurrency(record.fee)}</span>
                     <div class="record-card__actions">
@@ -583,6 +635,64 @@ function renderRecordList(filteredRecords, searchTerms) {
             </article>
         `;
     }).join("");
+}
+
+function renderRecordImagesSection(record) {
+    if (!record.images.length) {
+        return "";
+    }
+
+    return `
+        <section class="record-card__section">
+            <div class="record-card__section-head">
+                <p class="record-card__section-title">病例图片</p>
+                <span class="record-card__section-meta">共 ${record.images.length} 张</span>
+            </div>
+            <div class="case-image-grid case-image-grid--record">
+                ${record.images.map((image, index) => `
+                    <a class="case-image-card case-image-card--record" href="${escapeHtml(image.dataUrl)}" target="_blank" rel="noreferrer">
+                        <span class="case-image-card__preview">
+                            <img class="case-image-card__image" src="${escapeHtml(image.dataUrl)}" alt="${escapeHtml(image.name || `病例图片${index + 1}`)}">
+                        </span>
+                        <span class="case-image-card__caption">${escapeHtml(image.name || `病例图片${index + 1}`)}</span>
+                    </a>
+                `).join("")}
+            </div>
+        </section>
+    `;
+}
+
+function renderCaseImageManager() {
+    const count = state.pendingImages.length;
+
+    if (state.isProcessingImages) {
+        dom.caseImagesSummary.textContent = "正在处理病例图片，请稍候…";
+    } else if (count >= CASE_IMAGE_LIMIT) {
+        dom.caseImagesSummary.textContent = `已选择 ${count} / ${CASE_IMAGE_LIMIT} 张病例图片，已达到上限，可先移除再继续添加。`;
+    } else if (count) {
+        dom.caseImagesSummary.textContent = `已选择 ${count} / ${CASE_IMAGE_LIMIT} 张病例图片，保存后会随记录一起导出。`;
+    } else {
+        dom.caseImagesSummary.textContent = `支持一次上传多张病例图片，最多 ${CASE_IMAGE_LIMIT} 张，保存时会自动压缩并随 JSON 一起导出。`;
+    }
+
+    dom.caseImagesInput.disabled = state.isProcessingImages || count >= CASE_IMAGE_LIMIT;
+
+    if (!count) {
+        dom.caseImagesPreview.innerHTML = '<p class="case-image-empty">暂无病例图片，可一次选择多张上传。</p>';
+        return;
+    }
+
+    dom.caseImagesPreview.innerHTML = state.pendingImages.map((image, index) => `
+        <article class="case-image-card case-image-card--editor">
+            <a class="case-image-card__preview" href="${escapeHtml(image.dataUrl)}" target="_blank" rel="noreferrer">
+                <img class="case-image-card__image" src="${escapeHtml(image.dataUrl)}" alt="${escapeHtml(image.name || `病例图片${index + 1}`)}">
+            </a>
+            <div class="case-image-card__meta">
+                <p class="case-image-card__name">${escapeHtml(image.name || `病例图片${index + 1}`)}</p>
+                <button class="case-image-card__remove" type="button" data-case-image-remove="${escapeHtml(image.id)}">移除</button>
+            </div>
+        </article>
+    `).join("");
 }
 
 function renderFilterOptions() {
@@ -694,6 +804,7 @@ function getSearchTerms() {
 
 function buildRecordSearchText(record) {
     const followUpText = record.followUp ? "需复诊 复诊 回访 是" : "无需复诊 否";
+    const imageText = record.images.length ? `病例图片 图片 附件 有图 ${record.images.length} 张` : "无图 无病例图片";
 
     return [
         record.id,
@@ -710,7 +821,8 @@ function buildRecordSearchText(record) {
         record.status,
         followUpText,
         record.notes,
-        formatCurrency(record.fee)
+        formatCurrency(record.fee),
+        imageText
     ].join(" ").toLowerCase();
 }
 
@@ -756,9 +868,11 @@ function loadRecords() {
 function saveRecords(records) {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+        return true;
     } catch (error) {
         console.error("Failed to save records", error);
-        showToast("保存到浏览器本地失败，请检查存储空间。", true);
+        showToast("保存到浏览器本地失败，请减少图片数量或检查存储空间。", true);
+        return false;
     }
 }
 
@@ -780,6 +894,7 @@ function normalizeRecord(source, options = {}) {
         status: normalizeText(pickField(record, fieldAliases.status)) || STATUS_FALLBACK,
         followUp: normalizeBoolean(pickField(record, fieldAliases.followUp)),
         notes: normalizeText(pickField(record, fieldAliases.notes)),
+        images: normalizeRecordImages(pickField(record, fieldAliases.images)),
         createdAt: normalizeDateTime(pickField(record, fieldAliases.createdAt)) || now,
         updatedAt: normalizeDateTime(pickField(record, fieldAliases.updatedAt)) || now
     };
@@ -858,6 +973,65 @@ function normalizeDateTime(value) {
 
     const parsed = new Date(text);
     return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
+}
+
+function normalizeRecordImages(value) {
+    const rawItems = Array.isArray(value)
+        ? value
+        : value && Array.isArray(value.images)
+            ? value.images
+            : value
+                ? [value]
+                : [];
+
+    return rawItems
+        .map((item, index) => normalizeCaseImage(item, index))
+        .filter(Boolean)
+        .slice(0, CASE_IMAGE_LIMIT);
+}
+
+function normalizeCaseImage(item, index) {
+    const source = typeof item === "string"
+        ? item
+        : item && typeof item === "object"
+            ? item.dataUrl || item.url || item.src || item.base64
+            : "";
+    const dataUrl = normalizeImageSource(source);
+
+    if (!dataUrl) {
+        return null;
+    }
+
+    const name = typeof item === "object" && item ? normalizeText(item.name || item.fileName || item.title) : "";
+    const type = typeof item === "object" && item ? normalizeText(item.type || item.mimeType) : "";
+    const addedAt = typeof item === "object" && item ? normalizeDateTime(item.addedAt || item.createdAt) : "";
+    const imageId = typeof item === "object" && item ? normalizeText(item.id) : "";
+
+    return {
+        id: imageId || createCaseImageId(),
+        name: name || `病例图片${index + 1}`,
+        type: type || getDataUrlMimeType(dataUrl) || "image/jpeg",
+        dataUrl,
+        addedAt: addedAt || new Date().toISOString()
+    };
+}
+
+function cloneCaseImages(images) {
+    return normalizeRecordImages(images).map((image) => ({ ...image }));
+}
+
+function normalizeImageSource(value) {
+    const text = String(value ?? "").trim();
+    return /^data:image\/[a-z0-9.+-]+(?:;[^,]*)?,/i.test(text) ? text : "";
+}
+
+function getDataUrlMimeType(value) {
+    const match = String(value ?? "").match(/^data:(image\/[a-z0-9.+-]+)(?:;[^,]*)?,/i);
+    return match ? match[1].toLowerCase() : "";
+}
+
+function createCaseImageId() {
+    return `image-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function createRecordId() {
@@ -962,8 +1136,10 @@ async function handleImportFile(event) {
 
         const shouldReplace = state.records.length > 0 && window.confirm("点击“确定”覆盖现有数据，点击“取消”则追加导入。");
         const nextRecords = shouldReplace ? normalizedRecords : mergeImportedRecords(state.records, normalizedRecords);
-        setRecords(nextRecords);
-        showToast(`成功导入 ${normalizedRecords.length} 条记录。`, false);
+
+        if (setRecords(nextRecords)) {
+            showToast(`成功导入 ${normalizedRecords.length} 条记录。`, false);
+        }
     } catch (error) {
         console.error("Failed to import records", error);
         showToast("JSON 导入失败，请确认文件格式正确。", true);
@@ -990,6 +1166,178 @@ function readFileAsText(file) {
 
         reader.readAsText(file);
     });
+}
+
+function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = () => {
+            resolve(String(reader.result ?? ""));
+        };
+
+        reader.onerror = () => {
+            reject(reader.error || new Error("Failed to read image file"));
+        };
+
+        reader.readAsDataURL(file);
+    });
+}
+
+async function handleCaseImagesSelected(event) {
+    const files = Array.from(event.target.files || []);
+
+    if (!files.length) {
+        return;
+    }
+
+    const availableSlots = CASE_IMAGE_LIMIT - state.pendingImages.length;
+
+    if (availableSlots <= 0) {
+        dom.caseImagesInput.value = "";
+        renderCaseImageManager();
+        showToast(`每条记录最多上传 ${CASE_IMAGE_LIMIT} 张病例图片。`, true);
+        return;
+    }
+
+    const queuedFiles = files.slice(0, availableSlots);
+    const ignoredCount = files.length - queuedFiles.length;
+    const failedFiles = [];
+    const nextImages = [];
+
+    state.isProcessingImages = true;
+    renderCaseImageManager();
+
+    for (const file of queuedFiles) {
+        if (!String(file.type || "").toLowerCase().startsWith("image/")) {
+            failedFiles.push(file.name || "未命名文件");
+            continue;
+        }
+
+        try {
+            nextImages.push(await prepareCaseImage(file));
+        } catch (error) {
+            console.error("Failed to prepare case image", error);
+            failedFiles.push(file.name || "未命名图片");
+        }
+    }
+
+    state.isProcessingImages = false;
+    dom.caseImagesInput.value = "";
+
+    if (nextImages.length) {
+        state.pendingImages = [...state.pendingImages, ...nextImages].slice(0, CASE_IMAGE_LIMIT);
+    }
+
+    renderCaseImageManager();
+
+    if (!nextImages.length) {
+        showToast("没有成功处理的病例图片，请更换图片后重试。", true);
+        return;
+    }
+
+    const summary = [`已添加 ${nextImages.length} 张病例图片`];
+
+    if (ignoredCount > 0) {
+        summary.push(`超出上限的 ${ignoredCount} 张已忽略`);
+    }
+
+    if (failedFiles.length > 0) {
+        summary.push(`${failedFiles.length} 张处理失败`);
+    }
+
+    showToast(`${summary.join("，")}。`, failedFiles.length > 0);
+}
+
+function handleCaseImagePreviewAction(event) {
+    const removeButton = event.target.closest("[data-case-image-remove]");
+
+    if (!removeButton) {
+        return;
+    }
+
+    state.pendingImages = state.pendingImages.filter((image) => image.id !== removeButton.dataset.caseImageRemove);
+    dom.caseImagesInput.value = "";
+    renderCaseImageManager();
+}
+
+async function prepareCaseImage(file) {
+    const rawDataUrl = await readFileAsDataUrl(file);
+    const normalizedSource = normalizeImageSource(rawDataUrl);
+
+    if (!normalizedSource) {
+        throw new Error("Invalid image data");
+    }
+
+    const optimizedSource = await optimizeCaseImage(normalizedSource);
+    return normalizeCaseImage({
+        id: createCaseImageId(),
+        name: normalizeText(file.name) || `病例图片${state.pendingImages.length + 1}`,
+        type: getDataUrlMimeType(optimizedSource) || normalizeText(file.type) || "image/jpeg",
+        dataUrl: optimizedSource,
+        addedAt: new Date().toISOString()
+    }, state.pendingImages.length);
+}
+
+async function optimizeCaseImage(dataUrl) {
+    if (isJsdomEnvironment() || typeof Image !== "function") {
+        return dataUrl;
+    }
+
+    try {
+        const image = await loadImageElement(dataUrl);
+        const sourceWidth = image.naturalWidth || image.width;
+        const sourceHeight = image.naturalHeight || image.height;
+
+        if (!sourceWidth || !sourceHeight) {
+            return dataUrl;
+        }
+
+        const { width, height } = scaleImageSize(sourceWidth, sourceHeight, CASE_IMAGE_MAX_EDGE);
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+
+        if (!context) {
+            return dataUrl;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        context.drawImage(image, 0, 0, width, height);
+
+        const optimized = canvas.toDataURL("image/jpeg", CASE_IMAGE_JPEG_QUALITY);
+        return optimized && optimized.length < dataUrl.length ? optimized : dataUrl;
+    } catch (error) {
+        console.error("Failed to optimize case image", error);
+        return dataUrl;
+    }
+}
+
+function loadImageElement(source) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("Failed to load image"));
+        image.src = source;
+    });
+}
+
+function scaleImageSize(width, height, maxEdge) {
+    const longestEdge = Math.max(width, height);
+
+    if (longestEdge <= maxEdge) {
+        return { width, height };
+    }
+
+    const ratio = maxEdge / longestEdge;
+    return {
+        width: Math.max(1, Math.round(width * ratio)),
+        height: Math.max(1, Math.round(height * ratio))
+    };
+}
+
+function isJsdomEnvironment() {
+    return Boolean(window.navigator && /jsdom/i.test(window.navigator.userAgent || ""));
 }
 
 function extractImportRecords(payload) {
@@ -1040,7 +1388,7 @@ function exportJson() {
 }
 
 function exportCsv() {
-    const headers = ["姓名", "性别", "年龄", "电话", "就诊日期", "科室", "医生", "主诉/症状", "初步诊断", "收费金额", "状态", "是否复诊", "备注", "创建时间", "更新时间"];
+    const headers = ["姓名", "性别", "年龄", "电话", "就诊日期", "科室", "医生", "主诉/症状", "初步诊断", "收费金额", "状态", "是否复诊", "病例图片数量", "备注", "创建时间", "更新时间"];
     const rows = state.records.map((record) => [
         record.name,
         record.gender,
@@ -1054,6 +1402,7 @@ function exportCsv() {
         record.fee,
         record.status,
         record.followUp ? "是" : "否",
+        record.images.length,
         record.notes,
         record.createdAt,
         record.updatedAt
