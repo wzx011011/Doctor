@@ -209,6 +209,10 @@ textarea {
     gap: 12px;
 }
 
+.action-row--3col {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .button {
     display: inline-flex;
     align-items: center;
@@ -1088,4 +1092,192 @@ textarea {
         align-items: flex-start;
         flex-direction: column;
     }
+}
+
+/* ── Compact Record Card ── */
+.record-card--compact {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 14px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: background-color 160ms ease, box-shadow 160ms ease;
+    align-items: center;
+}
+
+.record-card--compact:hover {
+    background: rgba(15, 123, 108, 0.04);
+    box-shadow: 0 2px 8px rgba(15, 123, 108, 0.08);
+}
+
+.compact-thumb {
+    width: 52px;
+    height: 52px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: linear-gradient(135deg, var(--accent-soft, rgba(15, 123, 108, 0.08)), rgba(21, 33, 43, 0.03));
+    display: grid;
+    place-items: center;
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: var(--accent-strong);
+    flex-shrink: 0;
+}
+
+.compact-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.compact-card__body {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.compact-card__row1,
+.compact-card__row2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.compact-card__row2 {
+    gap: 6px;
+}
+
+.compact-card__name {
+    font-weight: 800;
+    font-size: 1rem;
+}
+
+.compact-card__right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.compact-card__fee {
+    font-weight: 800;
+    color: var(--accent-strong);
+    font-size: 0.95rem;
+    white-space: nowrap;
+}
+
+.compact-card__meta {
+    color: var(--muted);
+    font-size: 0.84rem;
+}
+
+.compact-card__symptoms {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.88rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ── Record Detail Modal ── */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+}
+
+.modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(21, 33, 43, 0.45);
+    backdrop-filter: blur(4px);
+}
+
+.modal-panel {
+    position: relative;
+    width: min(680px, 100%);
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    border-radius: var(--radius-xl);
+    background: var(--surface-strong);
+    box-shadow: var(--shadow);
+    animation: modal-rise-in 220ms ease;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 800;
+}
+
+.modal-close {
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    border: none;
+    background: rgba(21, 33, 43, 0.05);
+    font-size: 1.1rem;
+    color: var(--muted);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: background 160ms ease, color 160ms ease;
+}
+
+.modal-close:hover {
+    background: rgba(182, 66, 59, 0.1);
+    color: var(--danger);
+}
+
+.modal-body {
+    padding: 24px;
+}
+
+.modal-footer {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+}
+
+.modal-body .record-card__header {
+    margin-bottom: 16px;
+}
+
+.modal-body .record-card__meta {
+    margin-bottom: 16px;
+}
+
+.modal-body .record-card__section {
+    margin-bottom: 12px;
+}
+
+@keyframes modal-rise-in {
+    from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* ── Simplified Mode ── */
+.simplified-mode [data-simplify-hide] {
+    display: none !important;
 }

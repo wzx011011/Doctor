@@ -195,8 +195,11 @@ test("页面主流程功能可用", async () => {
 
     const zhangSanCard = getRecordCardByName(document, "张三");
     assert.ok(zhangSanCard);
-    assert.match(zhangSanCard.textContent, /病例图片/);
-    zhangSanCard.querySelector('[data-action="edit"]').click();
+    // 点击紧凑卡片打开详情弹窗
+    zhangSanCard.click();
+    await flush(window);
+    // 在弹窗中点击编辑
+    document.querySelector('[data-modal-action="edit"]').click();
     await flush(window);
     assert.equal(form.elements.name.value, "张三");
     assert.equal(document.querySelectorAll(".case-image-card--editor").length, 2);
@@ -215,7 +218,10 @@ test("页面主流程功能可用", async () => {
     assert.equal(editedRecord.images.length, 1);
 
     confirmQueue.push(true);
-    document.querySelector('[data-action="delete"][data-record-id="' + editedRecord.id + '"]').click();
+    // 点击卡片打开弹窗后删除
+    document.querySelector('[data-record-id="' + editedRecord.id + '"]').click();
+    await flush(window);
+    document.querySelector('[data-modal-action="delete"]').click();
     await flush(window);
     records = getStoredRecords(window);
     assert.equal(records.length, 1);

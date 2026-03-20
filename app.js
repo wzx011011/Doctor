@@ -57,6 +57,8 @@ const state = {
     records: [],
     activeTab: "records",
     feeVisible: true,
+    simplifiedMode: false,
+    defaultDoctor: "",
     filters: {
         keyword: "",
         startDate: "",
@@ -103,7 +105,12 @@ const dom = {
     importFile: document.getElementById("importFile"),
     exportJsonButton: document.getElementById("exportJsonButton"),
     exportCsvButton: document.getElementById("exportCsvButton"),
+    simplifiedToggle: document.getElementById("simplifiedToggle"),
     toggleFeeButton: document.getElementById("toggleFeeButton"),
+    recordModal: document.getElementById("recordModal"),
+    modalBody: document.getElementById("modalBody"),
+    modalFooter: document.getElementById("modalFooter"),
+    modalCloseButton: document.getElementById("modalCloseButton"),
     caseImagesInput: document.getElementById("caseImagesInput"),
     caseImagesSummary: document.getElementById("caseImagesSummary"),
     caseImagesPreview: document.getElementById("caseImagesPreview"),
@@ -139,6 +146,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
 async function initializeApplication() {
     await initializeState();
+
+    // 加载简版模式偏好
+    const savedSimplified = localStorage.getItem("doctor.simplified-mode");
+    if (savedSimplified === "1") {
+        state.simplifiedMode = true;
+        document.body.classList.add("simplified-mode");
+        dom.simplifiedToggle.textContent = "📋 切换完整版";
+    }
+
     render();
 
     if (state.pendingToast) {
@@ -213,7 +229,7 @@ function bindEvents() {
 
     dom.resetFiltersButton.addEventListener("click", () => resetFilters(true));
 
-    dom.recordList.addEventListener("click", handleRecordAction);
+    dom.recordList.addEventListener("click", handleRecordListClick);
     dom.searchResultChips.addEventListener("click", handleSearchResultAction);
     dom.importFile.addEventListener("change", handleImportFile);
     dom.exportJsonButton.addEventListener("click", exportJson);
@@ -221,6 +237,10 @@ function bindEvents() {
     dom.caseImagesInput.addEventListener("change", handleCaseImagesSelected);
     dom.caseImagesPreview.addEventListener("click", handleCaseImagePreviewAction);
     dom.toggleFeeButton.addEventListener("click", toggleFeeVisibility);
+    dom.simplifiedToggle.addEventListener("click", toggleSimplifiedMode);
+    dom.modalCloseButton.addEventListener("click", closeRecordModal);
+    dom.modalFooter.addEventListener("click", handleModalAction);
+    dom.recordModal.querySelector(".modal-backdrop").addEventListener("click", closeRecordModal);
     document.querySelector(".tab-nav").addEventListener("click", handleTabClick);
 }
 
@@ -238,12 +258,100 @@ function switchTab(tabName) {
     document.querySelectorAll(".tab-content").forEach((panel) => {
         panel.classList.toggle("tab-content--active", panel.dataset.tabPanel === tabName);
     });
+    render();
 }
 
 function toggleFeeVisibility() {
     state.feeVisible = !state.feeVisible;
     dom.toggleFeeButton.textContent = state.feeVisible ? "👁 隐藏金额" : "🔒 显示金额";
     renderStats(getFilteredRecords());
+}
+
+function toggleSimplifiedMode() {
+    state.simplifiedMode = !state.simplifiedMode;
+    document.body.classList.toggle("simplified-mode", state.simplifiedMode);
+    dom.simplifiedToggle.textContent = state.simplifiedMode ? "📋 切换完整版" : "📋 切换简版";
+    if (state.simplifiedMode && state.defaultDoctor) {
+        dom.form.elements.doctor.value = state.defaultDoctor;
+    }
+    localStorage.setItem("doctor.simplified-mode", state.simplifiedMode ? "1" : "0");
+}
+
+function openRecordModal(recordId) {
+    const record = state.records.find((r) => r.id === recordId);
+    if (!record) return;
+
+    const searchTerms = getSearchTerms();
+    const recordCode = getRecordCode(record.id);
+    const metaChips = [
+        record.gender ? `${record.gender}` : "性别未填",
+        Number.isFinite(record.age) ? `${record.age} 岁` : "年龄未填",
+        record.phone ? record.phone : "电话未填",
+        record.department || "科室未填",
+        record.doctor || "医生未填"
+    ];
+    if (record.images.length) metaChips.push(`${record.images.length} 张病例图`);
+
+    dom.modalBody.innerHTML = `
+        <header class="record-card__header">
+            <div>
+                <h3 class="record-card__name">${escapeHtml(record.name)}</h3>
+                <p class="record-card__subline">编号 ${escapeHtml(recordCode)} · 就诊日期 ${escapeHtml(record.visitDate)} · 更新时间 ${escapeHtml(formatDateTime(record.updatedAt))}</p>
+            </div>
+            <div class="badge-row">
+                <span class="badge badge--status">${escapeHtml(record.status)}</span>
+                ${record.followUp ? '<span class="badge badge--follow-up">需复诊</span>' : ""}
+            </div>
+        </header>
+        <div class="record-card__meta">
+            ${metaChips.map((chip) => `<span class="meta-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+        <section class="record-card__section">
+            <p class="record-card__section-title">主诉 / 症状</p>
+            <p class="record-card__section-text">${escapeHtml(record.symptoms)}</p>
+        </section>
+        <section class="record-card__section">
+            <p class="record-card__section-title">初步诊断</p>
+            <p class="record-card__section-text">${escapeHtml(record.diagnosis)}</p>
+        </section>
+        ${record.notes ? `<section class="record-card__section"><p class="record-card__section-title">备注</p><p class="record-card__section-text">${escapeHtml(record.notes)}</p></section>` : ""}
+        ${renderRecordImagesSection(record)}
+        <div class="record-card__footer" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+            <span class="record-card__fee">${maskFee(record.fee)}</span>
+        </div>
+    `;
+    dom.modalFooter.innerHTML = `
+        <button class="button button--ghost" type="button" data-modal-action="edit" data-record-id="${escapeHtml(record.id)}">编辑</button>
+        <button class="button button--danger" type="button" data-modal-action="delete" data-record-id="${escapeHtml(record.id)}">删除</button>
+    `;
+    dom.recordModal.classList.remove("hidden");
+}
+
+function closeRecordModal() {
+    dom.recordModal.classList.add("hidden");
+}
+
+function handleModalAction(event) {
+    const button = event.target.closest("[data-modal-action]");
+    if (!button) return;
+    const { modalAction: action, recordId } = button.dataset;
+    closeRecordModal();
+
+    if (action === "edit") {
+        const record = state.records.find((r) => r.id === recordId);
+        if (!record) return;
+        populateForm(record);
+        switchTab("form");
+        dom.form.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else if (action === "delete") {
+        const record = state.records.find((r) => r.id === recordId);
+        if (!record) return;
+        const confirmed = window.confirm(`确定删除 ${record.name} 的问诊记录吗？`);
+        if (!confirmed) return;
+        setRecords(state.records.filter((r) => r.id !== recordId));
+        if (state.editingId === recordId) resetEditing();
+        showToast("问诊记录已删除。", false);
+    }
 }
 
 function maskFee(value) {
@@ -346,6 +454,14 @@ function handleFormReset() {
         resetEditing(false);
         setFormDefaults();
     });
+}
+
+function handleRecordListClick(event) {
+    const card = event.target.closest("[data-record-id]");
+    if (!card) return;
+    const { recordId } = card.dataset;
+    if (!recordId) return;
+    openRecordModal(recordId);
 }
 
 async function handleRecordAction(event) {
@@ -705,62 +821,29 @@ function renderRecordList(filteredRecords, searchTerms) {
     }
 
     dom.recordList.innerHTML = filteredRecords.map((record) => {
-        const recordCode = getRecordCode(record.id);
-        const metaChips = [
-            record.gender ? `${record.gender}` : "性别未填",
-            Number.isFinite(record.age) ? `${record.age} 岁` : "年龄未填",
-            record.phone ? record.phone : "电话未填",
-            record.department || "科室未填",
-            record.doctor || "医生未填"
-        ];
-
-        if (record.images.length) {
-            metaChips.push(`${record.images.length} 张病例图`);
-        }
+        const thumbHtml = record.images.length
+            ? `<span class="compact-thumb"><img src="${escapeHtml(record.images[0].dataUrl)}" alt=""></span>`
+            : `<span class="compact-thumb compact-thumb--empty">${escapeHtml(record.name.charAt(0))}</span>`;
 
         return `
-            <article class="record-card" data-record-card-id="${escapeHtml(record.id)}">
-                <header class="record-card__header">
-                    <div>
-                        <h3 class="record-card__name">${highlightText(record.name, searchTerms)}</h3>
-                        <p class="record-card__subline">编号 ${highlightText(recordCode, searchTerms)} · 就诊日期 ${highlightText(record.visitDate, searchTerms)} · 更新时间 ${escapeHtml(formatDateTime(record.updatedAt))}</p>
+            <article class="record-card record-card--compact" data-record-id="${escapeHtml(record.id)}" data-record-click="modal">
+                ${thumbHtml}
+                <div class="compact-card__body">
+                    <div class="compact-card__row1">
+                        <span class="compact-card__name record-card__name">${highlightText(record.name, searchTerms)}</span>
                     </div>
+                    <div class="compact-card__row2">
+                        <span class="compact-card__meta">${highlightText(record.department, searchTerms)} · ${highlightText(record.visitDate, searchTerms)}${record.images.length ? ` · 病例图片` : ""}</span>
+                    </div>
+                    <p class="compact-card__symptoms">${highlightText(record.symptoms, searchTerms)}</p>
+                </div>
+                <div class="compact-card__right">
+                    <span class="compact-card__fee">${maskFee(record.fee)}</span>
                     <div class="badge-row">
                         <span class="badge badge--status">${highlightText(record.status, searchTerms)}</span>
-                        ${record.followUp ? '<span class="badge badge--follow-up">需复诊</span>' : ""}
+                        ${record.followUp ? '<span class="badge badge--follow-up">复诊</span>' : ""}
                     </div>
-                </header>
-
-                <div class="record-card__meta">
-                    ${metaChips.map((chip) => `<span class="meta-chip">${highlightText(chip, searchTerms)}</span>`).join("")}
                 </div>
-
-                <section class="record-card__section">
-                    <p class="record-card__section-title">主诉 / 症状</p>
-                    <p class="record-card__section-text">${highlightText(record.symptoms, searchTerms)}</p>
-                </section>
-
-                <section class="record-card__section">
-                    <p class="record-card__section-title">初步诊断</p>
-                    <p class="record-card__section-text">${highlightText(record.diagnosis, searchTerms)}</p>
-                </section>
-
-                ${record.notes ? `
-                    <section class="record-card__section">
-                        <p class="record-card__section-title">备注</p>
-                        <p class="record-card__section-text">${highlightText(record.notes, searchTerms)}</p>
-                    </section>
-                ` : ""}
-
-                ${renderRecordImagesSection(record)}
-
-                <footer class="record-card__footer">
-                    <span class="record-card__fee">${maskFee(record.fee)}</span>
-                    <div class="record-card__actions">
-                        <button class="button button--ghost" type="button" data-action="edit" data-record-id="${escapeHtml(record.id)}">编辑</button>
-                        <button class="button button--danger" type="button" data-action="delete" data-record-id="${escapeHtml(record.id)}">删除</button>
-                    </div>
-                </footer>
             </article>
         `;
     }).join("");
@@ -1624,7 +1707,7 @@ function focusRecordCard(recordId) {
 }
 
 function findRecordCardElement(recordId) {
-    return [...dom.recordList.querySelectorAll(".record-card")].find((card) => card.dataset.recordCardId === recordId) || null;
+    return [...dom.recordList.querySelectorAll(".record-card")].find((card) => card.dataset.recordId === recordId) || null;
 }
 
 function getRecordCode(recordId) {

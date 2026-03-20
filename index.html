@@ -19,9 +19,10 @@
                 <label class="button button--soft file-button" for="importFile">导入 JSON</label>
                 <input id="importFile" type="file" accept=".json,application/json" hidden>
                 <button id="seedDemoButton" class="button button--soft hidden" type="button">填充 100 条假数据</button>
-                <div class="action-row">
+                <div class="action-row action-row--3col">
                     <button id="exportJsonButton" class="button button--ghost" type="button">导出 JSON</button>
                     <button id="exportCsvButton" class="button button--ghost" type="button">导出 CSV</button>
+                    <button id="simplifiedToggle" class="button button--ghost" type="button">📋 切换简版</button>
                 </div>
             </div>
         </header>
@@ -103,12 +104,12 @@
 
                     <form id="recordForm" class="record-form">
                         <div class="form-grid">
-                            <label class="field">
+                            <label class="field field--span-2">
                                 <span>姓名</span>
                                 <input name="name" type="text" maxlength="30" placeholder="例如：张三" required>
                             </label>
 
-                            <label class="field">
+                            <label class="field field--span-2" data-simplify-hide>
                                 <span>性别</span>
                                 <select name="gender">
                                     <option value="">未填写</option>
@@ -118,32 +119,32 @@
                                 </select>
                             </label>
 
-                            <label class="field">
+                            <label class="field" data-simplify-hide>
                                 <span>年龄</span>
                                 <input name="age" type="number" min="0" max="120" placeholder="岁">
                             </label>
 
-                            <label class="field">
+                            <label class="field" data-simplify-hide>
                                 <span>电话</span>
                                 <input name="phone" type="tel" maxlength="20" placeholder="联系电话">
                             </label>
 
-                            <label class="field">
+                            <label class="field field--span-2">
                                 <span>就诊日期</span>
                                 <input name="visitDate" type="date" required>
                             </label>
 
-                            <label class="field">
+                            <label class="field field--span-2">
                                 <span>科室</span>
                                 <input name="department" type="text" list="departmentSuggestions" maxlength="30" placeholder="例如：内科" required>
                             </label>
 
-                            <label class="field">
+                            <label class="field field--span-2" data-simplify-hide>
                                 <span>医生</span>
                                 <input name="doctor" type="text" maxlength="30" placeholder="接诊医生" required>
                             </label>
 
-                            <label class="field">
+                            <label class="field field--span-2">
                                 <span>收费金额</span>
                                 <input name="fee" type="number" min="0" step="0.01" placeholder="0.00" required>
                             </label>
@@ -163,19 +164,19 @@
                                 <textarea name="diagnosis" rows="3" maxlength="300" placeholder="输入初步诊断结论" required></textarea>
                             </label>
 
-                            <label class="field field--span-2">
+                            <label class="field field--span-2" data-simplify-hide>
                                 <span>备注</span>
                                 <textarea name="notes" rows="3" maxlength="300" placeholder="补充说明、用药建议、回访要点等"></textarea>
                             </label>
 
-                            <div class="field field--span-2">
+                            <div class="field field--span-2" data-simplify-hide>
                                 <span>病例图片</span>
                                 <input id="caseImagesInput" name="caseImages" type="file" accept="image/*" multiple>
                                 <p id="caseImagesSummary" class="field-hint">支持一次上传多张病例图片，最多 6 张，保存时会自动压缩并随 JSON 一起导出。</p>
                                 <div id="caseImagesPreview" class="case-image-grid case-image-grid--editor"></div>
                             </div>
 
-                            <label class="checkbox-field field--span-2">
+                            <label class="checkbox-field field--span-2" data-simplify-hide>
                                 <input name="followUp" type="checkbox">
                                 <span>标记为需复诊 / 回访</span>
                             </label>
@@ -252,6 +253,18 @@
                 </section>
             </div>
         </main>
+    </div>
+
+    <div id="recordModal" class="modal-overlay hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-panel">
+            <div class="modal-header">
+                <p class="modal-title">问诊详情</p>
+                <button id="modalCloseButton" class="modal-close" type="button">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer" id="modalFooter"></div>
+        </div>
     </div>
 
     <div id="toast" class="toast" aria-live="polite"></div>
