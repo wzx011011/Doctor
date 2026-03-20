@@ -74,7 +74,7 @@ function createWindow() {
         show: false,
         autoHideMenuBar: true,
         backgroundColor: "#f3efe7",
-        title: "病人问诊记录登记统计",
+        title: "博济堂 · 病人问诊记录登记统计",
         icon: path.join(__dirname, "assets", "app-icon.png"),
         webPreferences: {
             preload: path.join(__dirname, "preload.js"),

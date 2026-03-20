@@ -937,6 +937,89 @@ textarea {
     }
 }
 
+/* ── Tab Navigation ── */
+.tab-nav {
+    display: flex;
+    gap: 4px;
+    padding: 6px;
+    border-radius: var(--radius-xl);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-soft);
+}
+
+.tab-btn {
+    flex: 1;
+    min-height: 48px;
+    padding: 0 18px;
+    border-radius: var(--radius-lg);
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.98rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: background-color 200ms ease, color 200ms ease, box-shadow 200ms ease, transform 180ms ease;
+}
+
+.tab-btn:hover {
+    color: var(--text);
+    background: rgba(15, 123, 108, 0.06);
+    transform: translateY(-1px);
+}
+
+.tab-btn--active {
+    color: #ffffff;
+    background: linear-gradient(135deg, var(--accent), #159d8a);
+    box-shadow: 0 8px 20px rgba(15, 123, 108, 0.22);
+}
+
+.tab-btn--active:hover {
+    color: #ffffff;
+    background: linear-gradient(135deg, var(--accent), #159d8a);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content--active {
+    display: grid;
+    gap: 22px;
+}
+
+/* ── Small Button ── */
+.button--sm {
+    min-height: 36px;
+    padding: 0 14px;
+    font-size: 0.86rem;
+}
+
+/* ── Fee Toggle ── */
+.fee-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+    font-size: inherit;
+    font-weight: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    padding: 0;
+}
+
+.fee-toggle__icon {
+    font-size: 0.9rem;
+    opacity: 0.6;
+    transition: opacity 180ms ease;
+}
+
+.fee-toggle:hover .fee-toggle__icon {
+    opacity: 1;
+}
+
 @media (max-width: 1040px) {
     .hero,
     .content-grid,

@@ -55,6 +55,8 @@ const DEMO_SCENARIOS = [
 
 const state = {
     records: [],
+    activeTab: "records",
+    feeVisible: true,
     filters: {
         keyword: "",
         startDate: "",
@@ -101,6 +103,7 @@ const dom = {
     importFile: document.getElementById("importFile"),
     exportJsonButton: document.getElementById("exportJsonButton"),
     exportCsvButton: document.getElementById("exportCsvButton"),
+    toggleFeeButton: document.getElementById("toggleFeeButton"),
     caseImagesInput: document.getElementById("caseImagesInput"),
     caseImagesSummary: document.getElementById("caseImagesSummary"),
     caseImagesPreview: document.getElementById("caseImagesPreview"),
@@ -177,6 +180,7 @@ function bindEvents() {
     dom.form.addEventListener("reset", handleFormReset);
     dom.newRecordButton.addEventListener("click", () => {
         resetEditing();
+        switchTab("form");
         dom.form.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     dom.cancelEditButton.addEventListener("click", resetEditing);
@@ -216,6 +220,34 @@ function bindEvents() {
     dom.exportCsvButton.addEventListener("click", exportCsv);
     dom.caseImagesInput.addEventListener("change", handleCaseImagesSelected);
     dom.caseImagesPreview.addEventListener("click", handleCaseImagePreviewAction);
+    dom.toggleFeeButton.addEventListener("click", toggleFeeVisibility);
+    document.querySelector(".tab-nav").addEventListener("click", handleTabClick);
+}
+
+function handleTabClick(event) {
+    const tabButton = event.target.closest(".tab-btn");
+    if (!tabButton) return;
+    switchTab(tabButton.dataset.tab);
+}
+
+function switchTab(tabName) {
+    state.activeTab = tabName;
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.classList.toggle("tab-btn--active", btn.dataset.tab === tabName);
+    });
+    document.querySelectorAll(".tab-content").forEach((panel) => {
+        panel.classList.toggle("tab-content--active", panel.dataset.tabPanel === tabName);
+    });
+}
+
+function toggleFeeVisibility() {
+    state.feeVisible = !state.feeVisible;
+    dom.toggleFeeButton.textContent = state.feeVisible ? "👁 隐藏金额" : "🔒 显示金额";
+    renderStats(getFilteredRecords());
+}
+
+function maskFee(value) {
+    return state.feeVisible ? `￥${formatCurrency(value)}` : "￥****";
 }
 
 async function handleSeedDemoButton() {
@@ -296,12 +328,14 @@ async function handleFormSubmit(event) {
         }
 
         showToast("问诊记录已更新。", false);
+        switchTab("records");
     } else {
         if (!await setRecords([nextRecord, ...state.records])) {
             return;
         }
 
         showToast("问诊记录已保存。", false);
+        switchTab("records");
     }
 
     resetEditing();
@@ -331,6 +365,7 @@ async function handleRecordAction(event) {
 
     if (action === "edit") {
         populateForm(record);
+        switchTab("form");
         dom.form.scrollIntoView({ behavior: "smooth", block: "start" });
         return;
     }
@@ -561,31 +596,36 @@ function renderStats(filteredRecords) {
             label: "总记录数",
             value: String(totalRecords),
             hint: `当前筛选结果 ${filteredCount} 条`,
-            accent: "var(--accent)"
+            accent: "var(--accent)",
+            isFee: false
         },
         {
             label: "当前筛选收费",
-            value: `￥${formatCurrency(filteredFee)}`,
-            hint: `${filteredCount} 条，平均每次 ￥${formatCurrency(filteredAverageFee)}`,
-            accent: "var(--accent-strong)"
+            value: maskFee(filteredFee),
+            hint: state.feeVisible ? `${filteredCount} 条，平均每次 ￥${formatCurrency(filteredAverageFee)}` : "已隐藏",
+            accent: "var(--accent-strong)",
+            isFee: true
         },
         {
             label: "今日问诊数",
             value: String(todayCount),
             hint: `${today} 录入 ${todayCount} 条`,
-            accent: "var(--info)"
+            accent: "var(--info)",
+            isFee: false
         },
         {
             label: "需复诊数",
             value: String(followUpCount),
             hint: `约占全部记录 ${followUpRatio}%`,
-            accent: "var(--warm)"
+            accent: "var(--warm)",
+            isFee: false
         },
         {
             label: "累计收费",
-            value: `￥${formatCurrency(totalFee)}`,
-            hint: `平均每次 ￥${formatCurrency(averageFee)}`,
-            accent: "var(--danger)"
+            value: maskFee(totalFee),
+            hint: state.feeVisible ? `平均每次 ￥${formatCurrency(averageFee)}` : "已隐藏",
+            accent: "var(--danger)",
+            isFee: true
         }
     ];
 
@@ -715,7 +755,7 @@ function renderRecordList(filteredRecords, searchTerms) {
                 ${renderRecordImagesSection(record)}
 
                 <footer class="record-card__footer">
-                    <span class="record-card__fee">收费 ￥${formatCurrency(record.fee)}</span>
+                    <span class="record-card__fee">${maskFee(record.fee)}</span>
                     <div class="record-card__actions">
                         <button class="button button--ghost" type="button" data-action="edit" data-record-id="${escapeHtml(record.id)}">编辑</button>
                         <button class="button button--danger" type="button" data-action="delete" data-record-id="${escapeHtml(record.id)}">删除</button>
