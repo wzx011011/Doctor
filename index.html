@@ -36,49 +36,29 @@
 
             <div class="tab-content tab-content--active" data-tab-panel="records">
                 <section class="panel">
-                    <div class="section-head">
-                        <div>
-                            <p class="section-title">快速筛选</p>
-                            <p class="section-subtitle">支持关键字、就诊日期、科室和状态组合筛选。</p>
-                        </div>
-                    </div>
-                    <div class="toolbar-grid">
-                        <label class="field">
-                            <span>关键字搜索</span>
-                            <input id="searchInput" type="search" placeholder="搜索姓名、电话、编号、科室、医生、主诉、诊断，支持多个关键词">
+                    <div class="filter-bar">
+                        <label class="filter-bar__item filter-bar__item--grow">
+                            <input id="searchInput" type="search" placeholder="搜索姓名、电话、编号、科室、医生、主诉、诊断...">
                         </label>
-                        <label class="field">
-                            <span>开始日期</span>
-                            <input id="startDateInput" type="date">
+                        <label class="filter-bar__item">
+                            <input id="startDateInput" type="date" title="开始日期">
                         </label>
-                        <label class="field">
-                            <span>结束日期</span>
-                            <input id="endDateInput" type="date">
+                        <label class="filter-bar__item">
+                            <input id="endDateInput" type="date" title="结束日期">
                         </label>
-                        <label class="field">
-                            <span>科室筛选</span>
+                        <label class="filter-bar__item">
                             <select id="departmentFilter">
                                 <option value="">全部科室</option>
                             </select>
                         </label>
-                        <label class="field">
-                            <span>状态筛选</span>
+                        <label class="filter-bar__item">
                             <select id="statusFilter">
                                 <option value="">全部状态</option>
                             </select>
                         </label>
-                        <div class="toolbar-actions">
-                            <button id="resetFiltersButton" class="button button--soft" type="button">清空筛选</button>
-                        </div>
+                        <button id="resetFiltersButton" class="button button--ghost button--sm" type="button">清空</button>
                     </div>
-                    <div class="search-insight">
-                        <div>
-                            <p class="search-insight__title">搜索导航</p>
-                            <p id="searchSummaryText" class="search-insight__text">支持多个关键词组合搜索，例如：张三 内科 李医生 或 DEMO-001。</p>
-                        </div>
-                        <div id="searchTermList" class="search-term-list"></div>
-                        <div id="searchResultChips" class="search-result-chips"></div>
-                    </div>
+                    <p id="filterSummary" class="filter-summary"></p>
                 </section>
 
                 <section class="panel panel--records">
@@ -136,12 +116,21 @@
 
                             <label class="field field--span-2">
                                 <span>科室</span>
-                                <input name="department" type="text" list="departmentSuggestions" maxlength="30" placeholder="例如：内科" required>
+                                <select name="department" required>
+                                    <option value="">请选择科室</option>
+                                    <option value="内科">内科</option>
+                                    <option value="外科">外科</option>
+                                    <option value="儿科">儿科</option>
+                                    <option value="口腔科">口腔科</option>
+                                    <option value="皮肤科">皮肤科</option>
+                                    <option value="中医科">中医科</option>
+                                </select>
                             </label>
 
                             <label class="field field--span-2" data-simplify-hide>
                                 <span>医生</span>
-                                <input name="doctor" type="text" maxlength="30" placeholder="接诊医生" required>
+                                <select name="doctor" id="doctorSelect">
+                                </select>
                             </label>
 
                             <label class="field field--span-2">
@@ -151,7 +140,13 @@
 
                             <label class="field field--span-2">
                                 <span>状态</span>
-                                <input name="status" type="text" list="statusSuggestions" maxlength="20" placeholder="例如：已完成" required>
+                                <select name="status" required>
+                                    <option value="">请选择状态</option>
+                                    <option value="已完成">已完成</option>
+                                    <option value="待复查">待复查</option>
+                                    <option value="随访中">随访中</option>
+                                    <option value="已归档">已归档</option>
+                                </select>
                             </label>
 
                             <label class="field field--span-2">
@@ -188,21 +183,6 @@
                         </div>
                     </form>
 
-                    <datalist id="departmentSuggestions">
-                        <option value="内科"></option>
-                        <option value="外科"></option>
-                        <option value="儿科"></option>
-                        <option value="口腔科"></option>
-                        <option value="皮肤科"></option>
-                        <option value="中医科"></option>
-                    </datalist>
-
-                    <datalist id="statusSuggestions">
-                        <option value="已完成"></option>
-                        <option value="待复查"></option>
-                        <option value="随访中"></option>
-                        <option value="已归档"></option>
-                    </datalist>
                 </section>
             </div>
 

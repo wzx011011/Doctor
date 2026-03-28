@@ -1,8 +1,8 @@
 const STORAGE_KEY = "doctor.consultation.records.v1";
 const STATUS_FALLBACK = "已完成";
 const CHART_DAYS = 7;
+
 const DEMO_RECORD_COUNT = 100;
-const SEARCH_RESULT_LIMIT = 8;
 const CASE_IMAGE_LIMIT = 6;
 const CASE_IMAGE_MAX_EDGE = 1600;
 const CASE_IMAGE_JPEG_QUALITY = 0.82;
@@ -58,7 +58,7 @@ const state = {
     activeTab: "records",
     feeVisible: true,
     simplifiedMode: false,
-    defaultDoctor: "",
+    defaultDoctor: "林博涛",
     filters: {
         keyword: "",
         startDate: "",
@@ -90,9 +90,7 @@ const dom = {
     endDateInput: document.getElementById("endDateInput"),
     departmentFilter: document.getElementById("departmentFilter"),
     statusFilter: document.getElementById("statusFilter"),
-    searchSummaryText: document.getElementById("searchSummaryText"),
-    searchTermList: document.getElementById("searchTermList"),
-    searchResultChips: document.getElementById("searchResultChips"),
+    filterSummary: document.getElementById("filterSummary"),
     resetFiltersButton: document.getElementById("resetFiltersButton"),
     statsGrid: document.getElementById("statsGrid"),
     trendChart: document.getElementById("trendChart"),
@@ -230,7 +228,6 @@ function bindEvents() {
     dom.resetFiltersButton.addEventListener("click", () => resetFilters(true));
 
     dom.recordList.addEventListener("click", handleRecordListClick);
-    dom.searchResultChips.addEventListener("click", handleSearchResultAction);
     dom.importFile.addEventListener("change", handleImportFile);
     dom.exportJsonButton.addEventListener("click", exportJson);
     dom.exportCsvButton.addEventListener("click", exportCsv);
@@ -271,8 +268,8 @@ function toggleSimplifiedMode() {
     state.simplifiedMode = !state.simplifiedMode;
     document.body.classList.toggle("simplified-mode", state.simplifiedMode);
     dom.simplifiedToggle.textContent = state.simplifiedMode ? "📋 切换完整版" : "📋 切换简版";
-    if (state.simplifiedMode && state.defaultDoctor) {
-        dom.form.elements.doctor.value = state.defaultDoctor;
+    if (state.simplifiedMode) {
+        dom.form.elements.doctor.value = state.defaultDoctor || "";
     }
     localStorage.setItem("doctor.simplified-mode", state.simplifiedMode ? "1" : "0");
 }
@@ -383,10 +380,6 @@ async function handleFormSubmit(event) {
         return;
     }
 
-    if (!dom.form.reportValidity()) {
-        return;
-    }
-
     const formData = new FormData(dom.form);
     const validationError = validateFormData(formData);
 
@@ -422,31 +415,38 @@ async function handleFormSubmit(event) {
         return;
     }
 
-    if (state.editingId) {
-        const existingRecord = state.records.find((item) => item.id === state.editingId);
-        const updatedRecord = {
-            ...existingRecord,
-            ...nextRecord,
-            createdAt: existingRecord ? existingRecord.createdAt : nextRecord.createdAt,
-            updatedAt: new Date().toISOString()
-        };
+    try {
+        if (state.editingId) {
+            const existingRecord = state.records.find((item) => item.id === state.editingId);
+            const updatedRecord = {
+                ...existingRecord,
+                ...nextRecord,
+                createdAt: existingRecord ? existingRecord.createdAt : nextRecord.createdAt,
+                updatedAt: new Date().toISOString()
+            };
 
-        if (!await setRecords(state.records.map((item) => (item.id === state.editingId ? updatedRecord : item)))) {
-            return;
+            if (!await setRecords(state.records.map((item) => (item.id === state.editingId ? updatedRecord : item)))) {
+                showToast("保存失败，请按 F12 查看控制台错误。", true);
+                return;
+            }
+
+            showToast("问诊记录已更新。", false);
+            switchTab("records");
+        } else {
+            if (!await setRecords([nextRecord, ...state.records])) {
+                showToast("保存失败，请按 F12 查看控制台错误。", true);
+                return;
+            }
+
+            resetFilters(false);
+            showToast("问诊记录已保存。", false);
+            switchTab("records");
         }
 
-        showToast("问诊记录已更新。", false);
-        switchTab("records");
-    } else {
-        if (!await setRecords([nextRecord, ...state.records])) {
-            return;
-        }
-
-        showToast("问诊记录已保存。", false);
-        switchTab("records");
+        resetEditing();
+    } catch (error) {
+        showToast("保存过程发生异常。", true);
     }
-
-    resetEditing();
 }
 
 function handleFormReset() {
@@ -505,16 +505,6 @@ async function handleRecordAction(event) {
     }
 }
 
-function handleSearchResultAction(event) {
-    const button = event.target.closest("[data-record-jump]");
-
-    if (!button) {
-        return;
-    }
-
-    focusRecordCard(button.dataset.recordJump);
-}
-
 function populateForm(record) {
     state.editingId = record.id;
     dom.form.elements.name.value = record.name;
@@ -561,7 +551,9 @@ function resetEditing(shouldResetForm = true) {
 function setFormDefaults() {
     dom.form.elements.visitDate.value = getTodayDate();
     dom.form.elements.status.value = STATUS_FALLBACK;
+    dom.form.elements.doctor.value = state.defaultDoctor || "";
     dom.form.elements.followUp.checked = false;
+    renderDoctorOptions();
     renderCaseImageManager();
 }
 
@@ -590,6 +582,7 @@ async function setRecords(records) {
         return false;
     }
 
+    renderDoctorOptions();
     render();
     return true;
 }
@@ -609,7 +602,6 @@ async function loadStoredRecords() {
                 }
             };
         } catch (error) {
-            console.error("Failed to load desktop records", error);
             showToast("读取桌面数据文件失败，已回退到浏览器本地存储。", true);
         }
     }
@@ -636,7 +628,6 @@ async function persistRecords(records) {
             };
             return true;
         } catch (error) {
-            console.error("Failed to save desktop records", error);
             showToast("保存到桌面数据文件失败，请检查文档目录权限。", true);
             return false;
         }
@@ -657,42 +648,27 @@ function render() {
     renderFilterOptions();
     const searchTerms = getSearchTerms();
     const filteredRecords = getFilteredRecords();
-    renderSearchInsight(filteredRecords, searchTerms);
+    renderFilterSummary(filteredRecords, searchTerms);
     renderStats(filteredRecords);
     renderTrendChart(filteredRecords);
     renderBreakdowns(filteredRecords);
     renderRecordList(filteredRecords, searchTerms);
 }
 
-function renderSearchInsight(filteredRecords, searchTerms) {
-    if (!searchTerms.length) {
-        dom.searchSummaryText.textContent = "支持多个关键词组合搜索，例如：张三 内科 李医生、1380000 或 DEMO-001。";
-        dom.searchTermList.innerHTML = ["姓名", "电话", "编号", "科室", "医生", "主诉", "诊断", "备注"]
-            .map((label) => `<span class="search-tag">${escapeHtml(label)}</span>`)
-            .join("");
-        dom.searchResultChips.innerHTML = state.records.slice(0, SEARCH_RESULT_LIMIT).map((record) => `
-            <button class="search-chip" type="button" data-record-jump="${escapeHtml(record.id)}">
-                <span class="search-chip__title">${escapeHtml(record.name)}</span>
-                <span class="search-chip__meta">${escapeHtml(`${record.department} · ${record.doctor} · ${getRecordCode(record.id)}`)}</span>
-            </button>
-        `).join("");
+function renderFilterSummary(filteredRecords, searchTerms) {
+    if (!hasActiveFilters() && !searchTerms.length) {
+        dom.filterSummary.textContent = "";
         return;
     }
 
-    dom.searchSummaryText.textContent = `当前输入 ${searchTerms.length} 个关键词，命中 ${filteredRecords.length} 条记录，支持跨姓名、电话、编号、科室、医生、症状和诊断联合搜索。`;
-    dom.searchTermList.innerHTML = searchTerms.map((term) => `<span class="search-tag search-tag--active">${escapeHtml(term)}</span>`).join("");
+    const parts = [];
+    if (searchTerms.length) parts.push(`关键词: ${searchTerms.map(escapeHtml).join("、")}`);
+    if (state.filters.department) parts.push(`科室: ${escapeHtml(state.filters.department)}`);
+    if (state.filters.status) parts.push(`状态: ${escapeHtml(state.filters.status)}`);
+    if (state.filters.startDate) parts.push(`从 ${escapeHtml(state.filters.startDate)}`);
+    if (state.filters.endDate) parts.push(`至 ${escapeHtml(state.filters.endDate)}`);
 
-    if (!filteredRecords.length) {
-        dom.searchResultChips.innerHTML = '<p class="search-empty">没有匹配结果，请调整关键词或日期区间。</p>';
-        return;
-    }
-
-    dom.searchResultChips.innerHTML = filteredRecords.slice(0, SEARCH_RESULT_LIMIT).map((record) => `
-        <button class="search-chip search-chip--result" type="button" data-record-jump="${escapeHtml(record.id)}">
-            <span class="search-chip__title">${highlightText(record.name, searchTerms)}</span>
-            <span class="search-chip__meta">${highlightText(`${record.department} · ${record.doctor} · ${getRecordCode(record.id)}`, searchTerms)}</span>
-        </button>
-    `).join("");
+    dom.filterSummary.textContent = `${parts.join(" | ")} — 命中 ${filteredRecords.length} 条记录`;
 }
 
 function renderStats(filteredRecords) {
@@ -912,6 +888,24 @@ function renderFilterOptions() {
     syncFilterSelect(dom.statusFilter, getUniqueFieldValues(state.records, "status"), state.filters.status, "全部状态");
 }
 
+function renderDoctorOptions() {
+    const select = dom.form.elements.doctor;
+    if (!select) return;
+    const currentValue = select.value;
+    const existingDoctors = getUniqueFieldValues(state.records, "doctor");
+    const allDoctors = new Set();
+    if (state.defaultDoctor) allDoctors.add(state.defaultDoctor);
+    for (const doc of existingDoctors) {
+        if (doc) allDoctors.add(doc);
+    }
+    const sorted = [...allDoctors].sort((a, b) => a.localeCompare(b, "zh-CN"));
+    select.innerHTML = [
+        `<option value="">请选择医生</option>`,
+        ...sorted.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
+    ].join("");
+    if (currentValue) select.value = currentValue;
+}
+
 function syncFilterSelect(selectElement, values, currentValue, placeholder) {
     const options = currentValue && !values.includes(currentValue) ? [currentValue, ...values] : values;
     selectElement.innerHTML = [
@@ -1051,6 +1045,12 @@ function validateFormData(formData) {
     ];
 
     for (const item of requiredFields) {
+        const element = dom.form.elements[item.field];
+
+        if (element && element.closest("[data-simplify-hide]")) {
+            continue;
+        }
+
         if (!normalizeText(formData.get(item.field))) {
             return { field: item.field, message: `请填写${item.label}。` };
         }
@@ -1685,29 +1685,6 @@ function showToast(message, isError) {
     toastTimer = window.setTimeout(() => {
         dom.toast.classList.remove("is-visible");
     }, 2400);
-}
-
-function focusRecordCard(recordId) {
-    const targetCard = findRecordCardElement(recordId);
-
-    if (!targetCard) {
-        return;
-    }
-
-    [...dom.recordList.querySelectorAll(".record-card--focus")].forEach((card) => {
-        card.classList.remove("record-card--focus");
-    });
-
-    targetCard.classList.add("record-card--focus");
-    targetCard.scrollIntoView({ behavior: "smooth", block: "center" });
-
-    window.setTimeout(() => {
-        targetCard.classList.remove("record-card--focus");
-    }, 1800);
-}
-
-function findRecordCardElement(recordId) {
-    return [...dom.recordList.querySelectorAll(".record-card")].find((card) => card.dataset.recordId === recordId) || null;
 }
 
 function getRecordCode(recordId) {
