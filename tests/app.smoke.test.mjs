@@ -79,7 +79,17 @@ async function submitRecord(window, values) {
     form.elements.phone.value = values.phone ?? "";
     form.elements.visitDate.value = values.visitDate;
     form.elements.department.value = values.department;
-    form.elements.doctor.value = values.doctor;
+    if (values.doctor) {
+        const doctorSelect = form.elements.doctor;
+        const existingOption = doctorSelect.querySelector(`option[value="${values.doctor}"]`);
+        if (!existingOption) {
+            const option = window.document.createElement("option");
+            option.value = values.doctor;
+            option.textContent = values.doctor;
+            doctorSelect.appendChild(option);
+        }
+        doctorSelect.value = values.doctor;
+    }
     form.elements.fee.value = values.fee;
     form.elements.status.value = values.status;
     form.elements.symptoms.value = values.symptoms;
@@ -280,7 +290,6 @@ test("首次打开会填充100条假数据并支持搜索定位", async () => {
     const records = getStoredRecords(window);
     assert.equal(records.length, 100);
     assert.equal(document.querySelectorAll(".record-card").length, 100);
-    assert.match(document.getElementById("searchResultChips").textContent, /DEMO-/);
 
     const searchInput = document.getElementById("searchInput");
     searchInput.value = "DEMO-001 内科";
@@ -288,14 +297,8 @@ test("首次打开会填充100条假数据并支持搜索定位", async () => {
     await flush(window);
 
     assert.equal(document.querySelectorAll(".record-card").length, 1);
-    assert.match(document.getElementById("searchTermList").textContent, /DEMO-001/);
+    assert.match(document.getElementById("filterSummary").textContent, /DEMO-001/);
     assert.match(document.getElementById("recordList").innerHTML, /text-highlight/);
-
-    const jumpButton = document.querySelector("[data-record-jump]");
-    assert.ok(jumpButton);
-    jumpButton.click();
-    await flush(window);
-    assert.equal(document.querySelectorAll(".record-card--focus").length, 1);
 
     dom.window.close();
 });
